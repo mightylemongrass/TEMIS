@@ -300,9 +300,12 @@ class MainApp(QMainWindow):
         '''
         if self.displayed == True:
             if self.selected == True:
-                base = os.path.splitext(self.img_dir)[0]
-                save_files(self.saved_bboxes, os.path.join(self.output_file_loc, base+".csv"))
-                cv2.imwrite(os.path.join(self.output_file_loc, base+".png"), self.redraw(r=True))
+                #base = os.path.splitext(self.img_dir)[0]
+                #save_files(self.saved_bboxes, os.path.join(self.output_file_loc, base+".csv"))
+                #cv2.imwrite(os.path.join(self.output_file_loc, base+".png"), self.redraw(r=True))
+                img_dir = self.file_path.text()
+                fn_prefix = os.path.splitext(self.toolbox.listWidget.selectedItems()[0].text())[0]
+                cv2.imwrite(os.path.join(img_dir, fn_prefix + "_segment.png"), self.annotated_image)
 
     def delete_box(self):
         '''
