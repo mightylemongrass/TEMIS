@@ -8,7 +8,7 @@ When the program is run, a GUI appears, allowing the user to segment and save im
 
 Python 3  
 Pytorch  
-OpenCV  4 or higher  
+OpenCV 4 or higher  
 Pyqt 5 or higher  
 Astropy  
 Pandas  

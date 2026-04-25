@@ -35,7 +35,7 @@ class MainImage(QWidget):
     this is the displayed image component that is shown on the screen of the UI
     image in the form of numpy array can be used to update this display image
     '''
-    def __init__(self, main_app): 
+    def __init__(self, main_app, secondary=False): 
         '''
         initializes object
         main ui window is inputed in
@@ -43,6 +43,7 @@ class MainImage(QWidget):
         '''
         super(MainImage, self).__init__()
         self.main_app = main_app
+        self.secondary = secondary
         self.image_pixmap = QPixmap(640, 640)
         self.image_pixmap.fill(Qt.white)
         self.image_scale = 1.0
@@ -82,12 +83,46 @@ class MainImage(QWidget):
             resized = self.image_pixmap.scaled(int(resized_w), int(resized_h))
         painter.drawPixmap(0, 0, resized)
         painter.end()
+
+    def widget_to_image_coords(self, x_widget, y_widget):
+        if self.image_pixmap is None:
+            return None, None
+
+        image_w = self.image_pixmap.width()
+        image_h = self.image_pixmap.height()
+
+        widget_w = self.width()
+        widget_h = self.height()
+
+        resized_w = widget_w
+        resized_h = widget_w * image_h / image_w
+        if resized_h > widget_h:
+            resized_w = widget_h * image_w / image_h
+            resized_h = widget_h
+
+        scale = image_w / resized_w
+
+        x_img = int(x_widget * scale)
+        y_img = int(y_widget * scale)
+
+        x_img = max(0, min(image_w - 1, x_img))
+        y_img = max(0, min(image_h - 1, y_img))
+
+        return x_img, y_img
             
     def mousePressEvent(self, mouse_event):
-        pass
-
+        if not self.secondary:
+            x_img, y_img = self.widget_to_image_coords(mouse_event.x(), mouse_event.y())
+            self.main_app.delete_segment(x_img, y_img)
+            self.main_app.delete_partially(x_img, y_img)
+            self.main_app.draw_segments(x_img, y_img)
+            
     def mouseMoveEvent(self, mouse_event):
-        pass
+        if not self.secondary:
+            x_img, y_img = self.widget_to_image_coords(mouse_event.x(), mouse_event.y())
+            self.main_app.delete_segment(x_img, y_img)
+            self.main_app.delete_partially(x_img, y_img)
+            self.main_app.draw_segments(x_img, y_img)
 
     def mouseReleaseEvent(self, mouse_event):
         pass
@@ -112,7 +147,7 @@ class MainTool(QWidget):
         self.detector = QPushButton('Detect Bubbles')
         self.detector.clicked.connect(self.main_app.detector_button)
 
-        self.checkbox = QCheckBox("Show Contours")
+        self.checkbox = QCheckBox("Show Segments")
         self.checkbox.setChecked(True)
         self.checkbox.toggled.connect(main_app.box)
 
@@ -120,13 +155,13 @@ class MainTool(QWidget):
         self.file_select = QPushButton('Select File')
         self.file_select.clicked.connect(main_app.selector)
 
-        self.slidelabel1 = QLabel('confidence threshold:25')
-        self.slider1 = QSlider(Qt.Horizontal)
-        self.slider1.setMinimum(0)
-        self.slider1.setMaximum(100)
-        self.slider1.setValue(25)
-        self.slider1.setTickPosition(QSlider.NoTicks)
-        self.slider1.valueChanged.connect(main_app.valuechanged)
+        self.slidelabel_conf = QLabel('confidence threshold: 25')
+        self.conf_slider = QSlider(Qt.Horizontal)
+        self.conf_slider.setMinimum(0)
+        self.conf_slider.setMaximum(100)
+        self.conf_slider.setValue(25)
+        self.conf_slider.setTickPosition(QSlider.NoTicks)
+        self.conf_slider.valueChanged.connect(main_app.conf_valuechanged)
 
         self.group1 = QGroupBox('Select Directory')
         layout1 = QVBoxLayout(self)
@@ -137,8 +172,8 @@ class MainTool(QWidget):
         self.group2 = QGroupBox('Options')
         layout2 = QVBoxLayout(self)
         layout2.addWidget(self.checkbox)
-        layout2.addWidget(self.slidelabel1)
-        layout2.addWidget(self.slider1)
+        layout2.addWidget(self.slidelabel_conf)
+        layout2.addWidget(self.conf_slider)
         layout2.addWidget(self.detector)
         self.group2.setLayout(layout2)
         
@@ -163,19 +198,25 @@ class MainApp(QMainWindow):
         initalizes all variables
         '''
         super(MainApp, self).__init__()
-        self.title = 'Helium Bubble Detector'
+        self.title = 'Transmission Electron Microscopy Image Segmentor (TEMIS)'
         self.left = 20
         self.top = 20
         self.width = 900
         self.height = 570
         self.working_image_path = ''
+        self.selected = False
         self.displayed = False
+        self.can_change_conf = True
         self.show_boxes = True
         self.conf_threshold = 25
         model_path = "best.pt"
         self.model = YOLO(model_path)
         self.init_window()
-
+        self.draw_toggle = False
+        self.delete_toggle = False
+        self.delete_partially_toggle = False
+        self.save_path = ""
+        self.brush_rad = 25
 
     def init_window(self):
         '''
@@ -184,55 +225,81 @@ class MainApp(QMainWindow):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
         self.painter = MainImage(self)
+        self.reference_image = MainImage(self, secondary=True)
         self.installEventFilter(self.painter)
 
         self.toolbox = MainTool(self)
         self.toolbox.setMaximumWidth(250)
 
         self.widget1 = QWidget(self)
-        self.top_layout = QHBoxLayout(self)
-        self.open_button = QPushButton('Open File Directory')
+        self.top_layout = QVBoxLayout(self)
+        self.top_row = QHBoxLayout()
+        self.bottom_row = QHBoxLayout()
+
+        self.open_button = QPushButton('Open Image Directory')
         self.open_button.clicked.connect(self.on_open_button)
         self.file_path = QLineEdit(self)
         self.file_path.setObjectName("file path")
-        self.file_path.returnPressed.connect(self.on_pushButtonOK_clicked)
-        self.top_layout.addWidget(self.file_path)
-        self.top_layout.addWidget(self.open_button)
+        self.file_path.returnPressed.connect(self.on_open_return)
+        
+        self.draw_button = QPushButton("Draw")
+        self.draw_button.clicked.connect(self.draw_segments_toggle_func)
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_segments_toggle_func)
+        self.delete_partially_button = QPushButton("Delete Partially")
+        self.delete_partially_button.clicked.connect(self.delete_partially_toggle_func)
+
+        self.draw_sliders_layout = QVBoxLayout(self)
+        self.slidelabel_draw = QLabel('draw tool size: 25')
+        self.draw_slider = QSlider(Qt.Horizontal)
+        self.draw_slider.setMinimum(5)
+        self.draw_slider.setMaximum(100)
+        self.draw_slider.setValue(25)
+        self.draw_slider.setTickPosition(QSlider.NoTicks)
+        self.draw_slider.valueChanged.connect(self.draw_slider_changed)
+        self.draw_sliders_layout.addWidget(self.slidelabel_draw)
+        self.draw_sliders_layout.addWidget(self.draw_slider)
+        
+        self.top_row.addWidget(self.file_path)
+        self.top_row.addWidget(self.open_button)
+        self.bottom_row.addWidget(self.draw_button)
+        self.bottom_row.addWidget(self.delete_button)
+        self.bottom_row.addWidget(self.delete_partially_button)
+        self.bottom_row.addWidget(self.slidelabel_draw)
+        self.bottom_row.addWidget(self.draw_slider)
+
+        self.top_layout.addLayout(self.top_row)
+        self.top_layout.addLayout(self.bottom_row) 
+
         self.widget1.setLayout(self.top_layout)
         self.widget1.setMaximumHeight(100)
 
-        self.table = QTableWidget(self)
-        self.table_header = ['Image','Left Edge','Right Edge','Height','Confidence','Area']
-        a = self.frameGeometry().width()//12
-        self.table_col_width = [a, a, a, a, a, a]
-        self.table_row_height = self.frameGeometry().height()//20
-        self.table.setColumnCount(len(self.table_header))
-        self.table.horizontalHeader().hide()
-        self.table.verticalHeader().hide()
-        self.table.setFont(QFont("arial", 9))
-
         self.save_button = QPushButton('Save Image and Boxes')
         self.save_button.clicked.connect(self.save_csv)
-        self.delete_button = QPushButton('Delete Box')
-        self.delete_button.clicked.connect(self.delete_box)
-
-        self.bottom_buttons = QWidget(self)
-        self.button_layout = QVBoxLayout()
-        self.button_layout.addWidget(self.delete_button)
-        self.button_layout.addWidget(self.save_button)
-        self.bottom_buttons.setLayout(self.button_layout)
+        self.open_save_directory_button = QPushButton('Open Save Directory')
+        self.open_save_directory_button.clicked.connect(self.on_save_button)
+        self.save_file_path_line_edit = QLineEdit(self)
+        self.save_file_path_line_edit.setObjectName("file path")
+        self.save_file_path_line_edit.returnPressed.connect(self.on_save_return)
 
         self.bottom_widget = QWidget(self)
         self.bottom_layout = QHBoxLayout()
-        self.bottom_layout.addWidget(self.table)
-        self.bottom_layout.addWidget(self.bottom_buttons)
+        self.bottom_layout.addWidget(self.save_file_path_line_edit)
+        self.bottom_layout.addWidget(self.open_save_directory_button) 
+        self.bottom_layout.addWidget(self.save_button)
         self.bottom_widget.setLayout(self.bottom_layout)
         self.bottom_widget.setMaximumHeight(self.frameGeometry().height()//3)
+
+        self.images = QWidget(self)
+        self.images_layout = QHBoxLayout()
+        self.images_layout.addWidget(self.reference_image)
+        self.images_layout.addWidget(self.painter)
+        self.images.setLayout(self.images_layout)
 
         self.widget2 = QWidget(self)
         self.main_dock = QVBoxLayout()
         self.main_dock.addWidget(self.widget1)
-        self.main_dock.addWidget(self.painter)
+        self.main_dock.addWidget(self.images)
         self.main_dock.addWidget(self.bottom_widget)
         self.widget2.setLayout(self.main_dock)
         
@@ -243,136 +310,12 @@ class MainApp(QMainWindow):
         layout.addWidget(self.widget2)
         mainwidget.setLayout(layout)
         self.setCentralWidget(mainwidget)
-        self.func_mappingSignal()
 
     def close_app(self):
         '''
         closing window
         '''
         sys.exit()
-
-    def on_pushButtonOK_clicked(self):
-        '''
-        changes image path when button is clicked
-        '''
-        self.working_image_path = self.file_path.text()
-        self.file_path.setText(str(self.working_image_path))
-        self.displayed = False
-        self.selected = False
-        csv_list = glob.glob(os.path.join(self.working_image_path, "*.fts"))
-        self.toolbox.listWidget.clear()
-        for csv in csv_list:
-            csv_fn = os.path.basename(csv)
-            listWidgetItem = QListWidgetItem(csv_fn)
-            self.toolbox.listWidget.addItem(listWidgetItem)
-
-    
-    def load_table(self):
-        '''
-        loads in table (called whenever table is updated)
-        '''
-        table_header = ['Image','Left Edge','Right Edge','Height','Confidence', 'Area']
-        self.table.setRowCount(len(self.saved_bboxes) + 1)
-        for row in range(len(self.saved_bboxes)):
-            self.table.setRowHeight(row, self.table_row_height)
-            for col in range(len(table_header)):
-                if col != 0:
-                    self.table.setItem(row+1, col, QTableWidgetItem(str(round(float(self.saved_bboxes[row][col]), 3))))
-                else:
-                    self.table.setItem(row+1, col, QTableWidgetItem(self.saved_bboxes[row][col]))
-
-    def func_mappingSignal(self):
-        '''
-        forwards table data to func_test function whenever table is clicked
-        '''
-        self.table.clicked.connect(self.func_test)
-
-    def func_test(self, item):
-        '''
-        updates self.selected_box variable to the box being currently selected by the user
-        '''
-        self.selected_box = item.row()-1
-        self.redraw()
-
-    def save_csv(self):
-        '''
-        saves the bounding boxes in a csv file
-        '''
-        if self.displayed == True:
-            if self.selected == True:
-                #base = os.path.splitext(self.img_dir)[0]
-                #save_files(self.saved_bboxes, os.path.join(self.output_file_loc, base+".csv"))
-                #cv2.imwrite(os.path.join(self.output_file_loc, base+".png"), self.redraw(r=True))
-                img_dir = self.file_path.text()
-                fn_prefix = os.path.splitext(self.toolbox.listWidget.selectedItems()[0].text())[0]
-                cv2.imwrite(os.path.join(img_dir, fn_prefix + "_segment.png"), self.annotated_image)
-
-    def delete_box(self):
-        '''
-        deletes selected row of table when delete is pressed
-        '''
-        if self.displayed:
-            if self.selected:
-                if self.selected_box >= 0:
-                    del self.polar_coords[self.selected_box]
-                    del self.saved_bboxes[self.selected_box]
-                    self.selected_box = -1
-                self.load_table()
-                self.redraw()
-
-    def redraw(self, r=False):
-        '''
-        reloading image when checkboxes are clicked, different image preset is used, or confidence value is changed
-        '''
-        if self.displayed == True:
-            if self.selected == True:
-                if self.show_boxes == True:
-                    tile_size = 640 
-                    overlap = 0.2  
-
-                    h, w = self.image.shape[:2]
-                    stride = int(tile_size * (1 - overlap))
-
-                    mask_overlay = np.zeros((h, w, 3), dtype=np.uint8)
-                    ind = 0
-                    for y in range(0, h, stride):
-                        for x in range(0, w, stride):
-
-                            for r in self.saved[ind]:
-                                if r.masks is None:
-                                    continue
-
-                                boxes_conf = r.boxes.conf.cpu().numpy()
-                                masks = r.masks.data.cpu().numpy()
-
-                                for conf, mask in zip(boxes_conf, masks):
-
-                                    if conf < self.conf_threshold/100:
-                                        continue
-
-                                    mask = cv2.resize(mask, (tile_size, tile_size))
-                                    mask = (mask > 0.5).astype(np.uint8)
-
-                                    colored_mask = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
-                                    colored_mask[:, :, 2] = mask * 255
-
-                                    y1, y2 = y, min(y + tile_size, h)
-                                    x1, x2 = x, min(x + tile_size, w)
-                                    overlay_crop = colored_mask[:y2 - y1, :x2 - x1]
-                                    mask_overlay[y1:y2, x1:x2] = np.maximum(mask_overlay[y1:y2, x1:x2], overlay_crop)
-                            ind += 1
-                    self.annotated_image = cv2.addWeighted(self.image, 0.7, mask_overlay, 0.5, 0)
-                    w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image)
-                    return
-            w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
-
-    def box(self):
-        '''
-        shows/hides boxes
-        '''
-
-        self.show_boxes = not self.show_boxes
-        self.redraw()
 
     def on_open_button(self):
         '''
@@ -399,6 +342,196 @@ class MainApp(QMainWindow):
             listWidgetItem = QListWidgetItem(csv_fn)
             self.toolbox.listWidget.addItem(listWidgetItem)
 
+    def on_open_return(self):
+        '''
+        changes image path when button is clicked
+        '''
+        self.working_image_path = self.file_path.text()
+        self.file_path.setText(str(self.working_image_path))
+        self.displayed = False
+        self.selected = False
+        csv_list = [f for f in glob.glob(os.path.join(self.working_image_path, "*")) if f.lower().endswith((".jpg", ".png"))]
+        self.toolbox.listWidget.clear()
+        for csv in csv_list:
+            csv_fn = os.path.basename(csv)
+            listWidgetItem = QListWidgetItem(csv_fn)
+            self.toolbox.listWidget.addItem(listWidgetItem)
+
+    def on_save_button(self):
+        self.save_path = QFileDialog.getExistingDirectory(self, 'Open File', os.getcwd())
+        self.save_file_path_line_edit.setText(str(self.save_path))
+    
+    def on_save_return(self):
+        self.save_path = self.save_file_path_line_edit.text() 
+        self.save_file_path_line_edit.setText(str(self.save_path))
+
+    def save_csv(self):
+        '''
+        saves images and saves segments in a csv file
+        '''
+        if self.displayed == True:
+            if self.selected:
+                fn_prefix = os.path.splitext(self.toolbox.listWidget.selectedItems()[0].text())[0]
+                if self.save_path == "" or not os.path.isdir(self.save_path):
+                    cv2.imwrite(fn_prefix + "_segment.png", self.annotated_image)
+                else:
+                    try:
+                        #save_files(self.saved_bboxes, os.path.join(self.output_file_loc, base+".csv"))
+                        cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment.png"), self.annotated_image)
+                    except:
+                        print("invalid directory")
+
+    def redraw_conf(self, r=False):
+        '''
+        reloading image when checkboxes are clicked, different image preset is used, or confidence value is changed
+        '''
+        if self.displayed == True:
+            if self.selected == True:
+                if self.show_boxes == True:
+                    tile_size = 640 
+                    overlap = 0.2 
+
+                    h, w = self.image.shape[:2]
+                    stride = int(tile_size * (1 - overlap))
+
+                    self.mask_overlay = np.zeros((h, w), dtype=np.int32)
+                    ind = 0
+                    mask_id = 1
+                    for y in range(0, h, stride):
+                        for x in range(0, w, stride):
+
+                            for r in self.saved[ind]:
+                                if r.masks is None:
+                                    continue
+
+                                boxes_conf = r.boxes.conf.cpu().numpy()
+                                masks = r.masks.data.cpu().numpy()
+
+                                for conf, mask in zip(boxes_conf, masks):
+
+                                    if conf < self.conf_threshold/100:
+                                        continue
+
+                                    mask = cv2.resize(mask, (tile_size, tile_size))
+                                    mask = (mask > 0.5).astype(np.uint8)
+                                    y1, y2 = y, min(y + tile_size, h)
+                                    x1, x2 = x, min(x + tile_size, w)
+
+                                    overlay_crop = mask[:y2 - y1, :x2 - x1].astype(bool)
+
+                                    region = self.mask_overlay[y1:y2, x1:x2]
+
+                                    empty = region == 0
+                                    region[overlay_crop & empty] = mask_id
+
+                                    mask_id += 1
+
+                            ind += 1
+                    
+
+                    self.annotated_image = self.image.copy()
+                    self.annotated_image[self.mask_overlay > 0] = 0
+                    w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
+                    return
+            w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
+
+
+    def redraw_edit(self):
+        if self.displayed == True:
+            if self.selected == True:
+                if self.show_boxes == True:
+                    self.annotated_image = self.image.copy()
+                    self.annotated_image[self.mask_overlay > 0] = 0
+                    w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image)
+                    return
+        w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
+
+
+    def box(self):
+        '''
+        shows/hides boxes
+        '''
+        
+        self.show_boxes = not self.show_boxes
+        self.redraw_edit()
+
+    def draw_segments_toggle_func(self):
+        if self.selected and self.displayed:
+            self.can_change_conf = False
+            self.draw_toggle = not self.draw_toggle
+            font = self.draw_button.font()
+            font.setBold(self.draw_toggle)
+            self.draw_button.setFont(font)
+            if self.delete_toggle:
+                self.delete_toggle = not self.delete_toggle 
+                font = self.delete_button.font()
+                font.setBold(self.delete_toggle)
+                self.delete_button.setFont(font)
+            if self.delete_partially_toggle:
+                self.delete_partially_toggle = not self.delete_partially_toggle 
+                font = self.delete_partially_button.font()
+                font.setBold(self.delete_partially_toggle)
+                self.delete_partially_button.setFont(font)
+                
+
+    def draw_segments(self, y, x):
+        if self.selected and self.displayed and self.show_boxes and self.draw_toggle:
+            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(255, 255, 255), thickness=-1)
+            self.redraw_edit()
+
+    def delete_segments_toggle_func(self):
+        if self.selected and self.displayed:
+            self.can_change_conf = False
+            self.delete_toggle = not self.delete_toggle 
+            font = self.delete_button.font()
+            font.setBold(self.delete_toggle)
+            self.delete_button.setFont(font)
+            if self.draw_toggle:
+                self.draw_toggle = not self.draw_toggle 
+                font = self.draw_button.font()
+                font.setBold(self.draw_toggle)
+                self.draw_button.setFont(font)
+            if self.delete_partially_toggle:
+                self.delete_partially_toggle = not self.delete_partially_toggle 
+                font = self.delete_partially_button.font()
+                font.setBold(self.delete_partially_toggle)
+                self.delete_partially_button.setFont(font)
+
+    def delete_segment(self, x, y):
+        if self.selected and self.displayed and self.show_boxes and self.delete_toggle: 
+            mask_id = self.mask_overlay[y, x]
+            if mask_id != 0:
+                self.mask_overlay[self.mask_overlay == mask_id] = 0
+            self.redraw_edit()
+
+    def delete_partially_toggle_func(self):
+        if self.selected and self.displayed:
+            self.can_change_conf = False
+            self.delete_partially_toggle = not self.delete_partially_toggle 
+            font = self.delete_partially_button.font()
+            font.setBold(self.delete_partially_toggle)
+            self.delete_partially_button.setFont(font)
+            if self.delete_toggle:
+                self.delete_toggle = not self.delete_toggle 
+                font = self.delete_button.font()
+                font.setBold(self.delete_toggle)
+                self.delete_button.setFont(font)
+            if self.draw_toggle:
+                self.draw_toggle = not self.draw_toggle 
+                font = self.draw_button.font()
+                font.setBold(self.draw_toggle)
+                self.draw_button.setFont(font)
+
+    def delete_partially(self, x, y):
+        if self.selected and self.displayed and self.show_boxes and self.delete_partially_toggle:
+            print("vaad")
+            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(0, 0, 0), thickness=-1)
+            self.redraw_edit()
+
+    def draw_slider_changed(self):
+        self.slidelabel_draw.setText('draw tool size: ' + str(self.draw_slider.value()))
+        self.brush_rad = self.draw_slider.value()
+
     def selector(self):
         '''
         displays the selected image file
@@ -406,11 +539,7 @@ class MainApp(QMainWindow):
         self.selected = False
         self.boxes = []
         self.selected_box = -1
-        self.table.setRowCount(1)
 
-        for col in range(len(self.table_header)):
-            self.table.setColumnWidth(col, self.table_col_width[col])
-            self.table.setItem(0, col, QTableWidgetItem(self.table_header[col]))
         try:
             image_path = self.file_path.text()
             self.output_file_loc = image_path
@@ -418,7 +547,8 @@ class MainApp(QMainWindow):
                 
                 self.image = cv2.imread(os.path.join(image_path, self.toolbox.listWidget.selectedItems()[0].text()))
                 self.displayed = True
-                self.redraw()
+                w, h = self.reference_image.set_image(numpy=True, numpy_img=self.image)
+                self.redraw_conf()
         except:
             pass
 
@@ -437,7 +567,10 @@ class MainApp(QMainWindow):
             h, w = self.image.shape[:2]
             stride = int(tile_size * (1 - overlap))
 
-            mask_overlay = np.zeros((h, w, 3), dtype=np.uint8)
+            self.mask_overlay = np.zeros((h, w), dtype=np.int32)
+
+            ind = 1
+            mask_id = 1
 
             for y in range(0, h, stride):
                 for x in range(0, w, stride):
@@ -472,29 +605,33 @@ class MainApp(QMainWindow):
                             mask = cv2.resize(mask, (tile_size, tile_size))
                             mask = (mask > 0.5).astype(np.uint8)
 
-                            colored_mask = np.zeros((tile_size, tile_size, 3), dtype=np.uint8)
-                            colored_mask[:, :, 2] = mask * 255 
-
                             y1, y2 = y, min(y + tile_size, h)
                             x1, x2 = x, min(x + tile_size, w)
-                            overlay_crop = colored_mask[:y2 - y1, :x2 - x1]
-                            mask_overlay[y1:y2, x1:x2] = np.maximum(mask_overlay[y1:y2, x1:x2], overlay_crop)
 
-            self.annotated_image = cv2.addWeighted(self.image, 0.7, mask_overlay, 0.5, 0)
-            w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image)
+                            overlay_crop = mask[:y2 - y1, :x2 - x1].astype(bool)
 
-            #self.load_table()
+                            region = self.mask_overlay[y1:y2, x1:x2]
+
+                            empty = region == 0
+                            region[overlay_crop & empty] = mask_id
+
+                            mask_id += 1
+
+            self.annotated_image = self.image.copy()
+            self.annotated_image[self.mask_overlay > 0] = 0
+            w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
 
             self.selected = True
 
-    def valuechanged(self):
+    def conf_valuechanged(self):
         '''
         updates bboxes based on changing confidence value
         '''
-        self.toolbox.slidelabel1.setText('confidence threshold: ' + str(self.toolbox.slider1.value()))
-        self.conf_threshold = self.toolbox.slider1.value()
+        if self.can_change_conf:
+            self.toolbox.slidelabel_conf.setText('confidence threshold: ' + str(self.toolbox.conf_slider.value()))
+            self.conf_threshold = self.toolbox.conf_slider.value()
 
-        self.redraw()
+            self.redraw_conf()
         
     def on_run_button(self):
         if len(self.working_image_path) == 0:
