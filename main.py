@@ -23,6 +23,9 @@ import glob
 import pandas as pd
 
 
+segment_color = (255, 50, 0)
+
+
 def save_files(saved_bboxes, filepath):
     '''
     saves bboxes in csv file
@@ -155,7 +158,7 @@ class MainTool(QWidget):
         self.file_select = QPushButton('Select File')
         self.file_select.clicked.connect(main_app.selector)
 
-        self.slidelabel_conf = QLabel('confidence threshold: 25')
+        self.slidelabel_conf = QLabel('Confidence Threshold: 25')
         self.conf_slider = QSlider(Qt.Horizontal)
         self.conf_slider.setMinimum(0)
         self.conf_slider.setMaximum(100)
@@ -242,19 +245,19 @@ class MainApp(QMainWindow):
         self.file_path.setObjectName("file path")
         self.file_path.returnPressed.connect(self.on_open_return)
         
-        self.draw_button = QPushButton("Draw")
+        self.draw_button = QPushButton("Draw New Segment")
         self.draw_button.clicked.connect(self.draw_segments_toggle_func)
-        self.delete_button = QPushButton("Delete")
+        self.delete_button = QPushButton("Delete Segment")
         self.delete_button.clicked.connect(self.delete_segments_toggle_func)
         self.delete_partially_button = QPushButton("Delete Partially")
         self.delete_partially_button.clicked.connect(self.delete_partially_toggle_func)
 
         self.draw_sliders_layout = QVBoxLayout(self)
-        self.slidelabel_draw = QLabel('draw tool size: 25')
+        self.slidelabel_draw = QLabel('Brush Size: 20')
         self.draw_slider = QSlider(Qt.Horizontal)
         self.draw_slider.setMinimum(5)
         self.draw_slider.setMaximum(100)
-        self.draw_slider.setValue(25)
+        self.draw_slider.setValue(20)
         self.draw_slider.setTickPosition(QSlider.NoTicks)
         self.draw_slider.valueChanged.connect(self.draw_slider_changed)
         self.draw_sliders_layout.addWidget(self.slidelabel_draw)
@@ -264,7 +267,7 @@ class MainApp(QMainWindow):
         self.top_row.addWidget(self.open_button)
         self.bottom_row.addWidget(self.draw_button)
         self.bottom_row.addWidget(self.delete_button)
-        self.bottom_row.addWidget(self.delete_partially_button)
+        ########### self.bottom_row.addWidget(self.delete_partially_button) ### modified
         self.bottom_row.addWidget(self.slidelabel_draw)
         self.bottom_row.addWidget(self.draw_slider)
 
@@ -427,10 +430,9 @@ class MainApp(QMainWindow):
                                     mask_id += 1
 
                             ind += 1
-                    
 
                     self.annotated_image = self.image.copy()
-                    self.annotated_image[self.mask_overlay > 0] = 0
+                    self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
                     w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
                     return
             w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
@@ -441,7 +443,7 @@ class MainApp(QMainWindow):
             if self.selected == True:
                 if self.show_boxes == True:
                     self.annotated_image = self.image.copy()
-                    self.annotated_image[self.mask_overlay > 0] = 0
+                    self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
                     w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image)
                     return
         w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
@@ -472,6 +474,11 @@ class MainApp(QMainWindow):
                 font = self.delete_partially_button.font()
                 font.setBold(self.delete_partially_toggle)
                 self.delete_partially_button.setFont(font)
+
+            if self.draw_toggle:
+                self.painter.setCursor(Qt.CrossCursor)
+            else:
+                self.painter.setCursor(Qt.ArrowCursor)
                 
 
     def draw_segments(self, y, x):
@@ -497,10 +504,16 @@ class MainApp(QMainWindow):
                 font.setBold(self.delete_partially_toggle)
                 self.delete_partially_button.setFont(font)
 
+            if self.delete_toggle:
+                self.painter.setCursor(Qt.CrossCursor)
+            else:
+                self.painter.setCursor(Qt.ArrowCursor)
+
     def delete_segment(self, x, y):
         if self.selected and self.displayed and self.show_boxes and self.delete_toggle: 
             mask_id = self.mask_overlay[y, x]
             if mask_id != 0:
+                ##self.saved_selected.append(mask_id) ##### modified
                 self.mask_overlay[self.mask_overlay == mask_id] = 0
             self.redraw_edit()
 
@@ -529,7 +542,7 @@ class MainApp(QMainWindow):
             self.redraw_edit()
 
     def draw_slider_changed(self):
-        self.slidelabel_draw.setText('draw tool size: ' + str(self.draw_slider.value()))
+        self.slidelabel_draw.setText('Brush Size: ' + str(self.draw_slider.value()))
         self.brush_rad = self.draw_slider.value()
 
     def selector(self):
@@ -559,6 +572,7 @@ class MainApp(QMainWindow):
         self.toolbox.checkbox.setChecked(True)
         self.show_boxes = True
         self.saved = []
+        self.saved_selected = []
         if self.displayed == True:
 
             tile_size = 640 
@@ -582,6 +596,7 @@ class MainApp(QMainWindow):
                         padded[:th, :tw] = tile
                         tile = padded
 
+                    # retrieve segmentation model results
                     results = self.model.predict(
                         source=tile,
                         imgsz=tile_size,
@@ -617,8 +632,8 @@ class MainApp(QMainWindow):
 
                             mask_id += 1
 
-            self.annotated_image = self.image.copy()
-            self.annotated_image[self.mask_overlay > 0] = 0
+            self.annotated_image = self.image.copy()            
+            self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
             w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
 
             self.selected = True
