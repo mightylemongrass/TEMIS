@@ -201,6 +201,8 @@ class MainApp(QMainWindow):
         initalizes all variables
         '''
         super(MainApp, self).__init__()
+        self.setFocusPolicy(Qt.StrongFocus)
+
         self.title = 'Transmission Electron Microscopy Image Segmentor (TEMIS)'
         self.left = 20
         self.top = 20
@@ -320,6 +322,10 @@ class MainApp(QMainWindow):
         '''
         sys.exit()
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            self.draw_segments_toggle_func()
+
     def on_open_button(self):
         '''
         opens the selected file
@@ -399,7 +405,7 @@ class MainApp(QMainWindow):
 
                     self.mask_overlay = np.zeros((h, w), dtype=np.int32)
                     ind = 0
-                    mask_id = 1
+                    self.mask_id = 1
                     for y in range(0, h, stride):
                         for x in range(0, w, stride):
 
@@ -425,14 +431,14 @@ class MainApp(QMainWindow):
                                     region = self.mask_overlay[y1:y2, x1:x2]
 
                                     empty = region == 0
-                                    region[overlay_crop & empty] = mask_id
+                                    region[overlay_crop & empty] = self.mask_id
 
-                                    mask_id += 1
+                                    self.mask_id += 1
 
                             ind += 1
 
                     self.annotated_image = self.image.copy()
-                    self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
+                    self.annotated_image[self.mask_overlay > 0] = segment_color
                     w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
                     return
             w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
@@ -443,7 +449,7 @@ class MainApp(QMainWindow):
             if self.selected == True:
                 if self.show_boxes == True:
                     self.annotated_image = self.image.copy()
-                    self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
+                    self.annotated_image[self.mask_overlay > 0] = segment_color
                     w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image)
                     return
         w, h = self.painter.set_image(numpy=True, numpy_img=self.image)
@@ -461,6 +467,7 @@ class MainApp(QMainWindow):
         if self.selected and self.displayed:
             self.can_change_conf = False
             self.draw_toggle = not self.draw_toggle
+            self.mask_id += 1
             font = self.draw_button.font()
             font.setBold(self.draw_toggle)
             self.draw_button.setFont(font)
@@ -483,7 +490,7 @@ class MainApp(QMainWindow):
 
     def draw_segments(self, y, x):
         if self.selected and self.displayed and self.show_boxes and self.draw_toggle:
-            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(255, 255, 255), thickness=-1)
+            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(self.mask_id, self.mask_id, self.mask_id), thickness=-1)
             self.redraw_edit()
 
     def delete_segments_toggle_func(self):
@@ -572,7 +579,6 @@ class MainApp(QMainWindow):
         self.toolbox.checkbox.setChecked(True)
         self.show_boxes = True
         self.saved = []
-        self.saved_selected = []
         if self.displayed == True:
 
             tile_size = 640 
@@ -584,7 +590,7 @@ class MainApp(QMainWindow):
             self.mask_overlay = np.zeros((h, w), dtype=np.int32)
 
             ind = 1
-            mask_id = 1
+            self.mask_id = 1
 
             for y in range(0, h, stride):
                 for x in range(0, w, stride):
@@ -628,9 +634,9 @@ class MainApp(QMainWindow):
                             region = self.mask_overlay[y1:y2, x1:x2]
 
                             empty = region == 0
-                            region[overlay_crop & empty] = mask_id
+                            region[overlay_crop & empty] = self.mask_id
 
-                            mask_id += 1
+                            self.mask_id += 1
 
             self.annotated_image = self.image.copy()            
             self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
