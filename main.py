@@ -383,10 +383,40 @@ class MainApp(QMainWindow):
                 fn_prefix = os.path.splitext(self.toolbox.listWidget.selectedItems()[0].text())[0]
                 if self.save_path == "" or not os.path.isdir(self.save_path):
                     cv2.imwrite(fn_prefix + "_segment.png", self.annotated_image)
+                    #cv2.imwrite(fn_prefix + "_black.png", self.mask_overlay)
+
                 else:
                     try:
-                        #save_files(self.saved_bboxes, os.path.join(self.output_file_loc, base+".csv"))
                         cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment.png"), self.annotated_image)
+                        cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment_only.png"), self.mask_overlay)
+
+                        unique_values = np.unique(self.mask_overlay)
+                        unique_values = unique_values[unique_values != 0]
+                        print("stuff")
+
+                        data = []
+
+                        for val in unique_values:
+                            mask = np.uint8(self.mask_overlay == val)
+
+                            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                            for cnt in contours:
+                                area = cv2.contourArea(cnt)
+
+                                M = cv2.moments(cnt)
+                                if M["m00"] != 0:
+                                    cX = M["m10"] / M["m00"]
+                                    cY = M["m01"] / M["m00"]
+                                else:
+                                    cX, cY = 0, 0
+
+                                data.append({"pixel_value": val, "area": area, "center_x": cX, "center_y": cY})
+
+                        df = pd.DataFrame(data)
+
+                        df.to_csv(os.path.join(self.save_path, fn_prefix + "_segment_data.csv"), index=False)
+                        
                     except:
                         print("invalid directory")
 
