@@ -26,13 +26,6 @@ import pandas as pd
 segment_color = (255, 50, 0)
 
 
-def save_files(saved_bboxes, filepath):
-    '''
-    saves bboxes in csv file
-    '''
-    my_df = pd.DataFrame(saved_bboxes, columns=['Image', 'Left Edge', 'Right Edge', 'Height', 'Confidence', "Area", "CenterX", "CenterY", "Radius"])
-    my_df.to_csv(filepath, index=False)
-
 class MainImage(QWidget): 
     '''
     this is the displayed image component that is shown on the screen of the UI
@@ -392,7 +385,6 @@ class MainApp(QMainWindow):
 
                         unique_values = np.unique(self.mask_overlay)
                         unique_values = unique_values[unique_values != 0]
-                        print("stuff")
 
                         data = []
 
@@ -403,6 +395,9 @@ class MainApp(QMainWindow):
 
                             for cnt in contours:
                                 area = cv2.contourArea(cnt)
+
+                                if area <= 20:
+                                    continue
 
                                 M = cv2.moments(cnt)
                                 if M["m00"] != 0:
