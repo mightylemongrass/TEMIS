@@ -612,10 +612,13 @@ class MainApp(QMainWindow):
             h, w = self.image.shape[:2]
             stride = int(tile_size * (1 - overlap))
 
-            self.mask_overlay = np.zeros((h, w), dtype=np.int32)
-
             ind = 1
             self.mask_id = 1
+
+            self.mask_overlay = np.zeros((h, w), dtype=np.int32)
+            self.conf_overlay = np.zeros((h, w), dtype=np.float32)
+
+            detections = []
 
             for y in range(0, h, stride):
                 for x in range(0, w, stride):
@@ -627,13 +630,13 @@ class MainApp(QMainWindow):
                         padded[:th, :tw] = tile
                         tile = padded
 
-                    # retrieve segmentation model results
                     results = self.model.predict(
                         source=tile,
                         imgsz=tile_size,
                         show=False,
                         conf=0.35,
-                        verbose=False
+                        verbose=False, 
+                        retina_masks=True
                     )
                     self.saved.append(results)
                     for r in results:
@@ -658,8 +661,12 @@ class MainApp(QMainWindow):
 
                             region = self.mask_overlay[y1:y2, x1:x2]
 
-                            empty = region == 0
-                            region[overlay_crop & empty] = self.mask_id
+                            conf_region = self.conf_overlay[y1:y2, x1:x2]
+
+                            update_pixels = overlay_crop & (conf > conf_region)
+
+                            region[update_pixels] = self.mask_id
+                            conf_region[update_pixels] = conf
 
                             self.mask_id += 1
 
