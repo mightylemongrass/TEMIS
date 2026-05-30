@@ -429,39 +429,29 @@ class MainApp(QMainWindow):
                     stride = int(tile_size * (1 - overlap))
 
                     self.mask_overlay = np.zeros((h, w), dtype=np.int32)
-                    ind = 0
+                    self.conf_overlay = np.zeros((h, w), dtype=np.int32)
                     self.mask_id = 1
-                    for y in range(0, h, stride):
-                        for x in range(0, w, stride):
+                    for det in self.detections:
 
-                            for r in self.saved[ind]:
-                                if r.masks is None:
-                                    continue
+                        if det["conf"] < self.conf_threshold / 100:
+                            print(det["conf"])
+                            continue
 
-                                boxes_conf = r.boxes.conf.cpu().numpy()
-                                masks = r.masks.data.cpu().numpy()
+                        x1, y1, x2, y2 = det["bbox"]
 
-                                for conf, mask in zip(boxes_conf, masks):
+                        region = self.mask_overlay[y1:y2, x1:x2]
+                        conf_region = self.conf_overlay[y1:y2, x1:x2]
 
-                                    if conf < self.conf_threshold/100:
-                                        continue
+                        mask = det["mask"]
+                        conf = det["conf"]
 
-                                    mask = cv2.resize(mask, (tile_size, tile_size))
-                                    mask = (mask > 0.5).astype(np.uint8)
-                                    y1, y2 = y, min(y + tile_size, h)
-                                    x1, x2 = x, min(x + tile_size, w)
+                        update_pixels = mask & (conf > conf_region)
 
-                                    overlay_crop = mask[:y2 - y1, :x2 - x1].astype(bool)
+                        region[update_pixels] = self.mask_id
+                        conf_region[update_pixels] = conf
 
-                                    region = self.mask_overlay[y1:y2, x1:x2]
-
-                                    empty = region == 0
-                                    region[overlay_crop & empty] = self.mask_id
-
-                                    self.mask_id += 1
-
-                            ind += 1
-
+                        self.mask_id += 1
+ 
                     self.annotated_image = self.image.copy()
                     self.annotated_image[self.mask_overlay > 0] = segment_color
                     w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
@@ -545,7 +535,6 @@ class MainApp(QMainWindow):
         if self.selected and self.displayed and self.show_boxes and self.delete_toggle: 
             mask_id = self.mask_overlay[y, x]
             if mask_id != 0:
-                ##self.saved_selected.append(mask_id) ##### modified
                 self.mask_overlay[self.mask_overlay == mask_id] = 0
             self.redraw_edit()
 
@@ -569,7 +558,6 @@ class MainApp(QMainWindow):
 
     def delete_partially(self, x, y):
         if self.selected and self.displayed and self.show_boxes and self.delete_partially_toggle:
-            print("vaad")
             cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(0, 0, 0), thickness=-1)
             self.redraw_edit()
 
@@ -597,13 +585,78 @@ class MainApp(QMainWindow):
         except:
             pass
 
+    def mask_iou(self, mask1, mask2):
+        intersection = np.logical_and(mask1, mask2).sum()
+        union = np.logical_or(mask1, mask2).sum()
+
+        if union == 0:
+            return 0.0
+
+        return intersection / union
+
+
+    def detection_iou(self, det1, det2):
+
+        ax1, ay1, ax2, ay2 = det1["bbox"]
+        bx1, by1, bx2, by2 = det2["bbox"]
+
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+
+        if ix1 >= ix2 or iy1 >= iy2:
+            return 0.0
+
+        h = iy2 - iy1
+        w = ix2 - ix1
+
+        a_crop = det1["mask"][
+            iy1 - ay1:iy2 - ay1,
+            ix1 - ax1:ix2 - ax1
+        ]
+
+        b_crop = det2["mask"][
+            iy1 - by1:iy2 - by1,
+            ix1 - bx1:ix2 - bx1
+        ]
+
+        return self.mask_iou(a_crop, b_crop)
+
+
+    def mask_nms(self, detections, iou_thresh=0.5):
+
+        detections = sorted(
+            detections,
+            key=lambda d: d["conf"],
+            reverse=True
+        )
+
+        keep = []
+
+        while detections:
+
+            best = detections.pop(0)
+            keep.append(best)
+
+            remaining = []
+
+            for det in detections:
+
+                if self.detection_iou(best, det) < iou_thresh:
+                    remaining.append(det)
+
+            detections = remaining
+
+        return keep
+
     def detector_button(self):
         '''
         runs image through the model and annotates image
         '''
         self.toolbox.checkbox.setChecked(True)
         self.show_boxes = True
-        self.saved = []
+        self.detections = []
         if self.displayed == True:
 
             tile_size = 640 
@@ -617,8 +670,6 @@ class MainApp(QMainWindow):
 
             self.mask_overlay = np.zeros((h, w), dtype=np.int32)
             self.conf_overlay = np.zeros((h, w), dtype=np.float32)
-
-            detections = []
 
             for y in range(0, h, stride):
                 for x in range(0, w, stride):
@@ -638,7 +689,6 @@ class MainApp(QMainWindow):
                         verbose=False, 
                         retina_masks=True
                     )
-                    self.saved.append(results)
                     for r in results:
                         if r.masks is None:
                             continue
@@ -659,22 +709,41 @@ class MainApp(QMainWindow):
 
                             overlay_crop = mask[:y2 - y1, :x2 - x1].astype(bool)
 
-                            region = self.mask_overlay[y1:y2, x1:x2]
+                            self.detections.append({
+                                "mask": overlay_crop,
+                                "bbox": (x1, y1, x2, y2),
+                                "conf": float(conf)
+                            })
 
-                            conf_region = self.conf_overlay[y1:y2, x1:x2]
+            self.detections = self.mask_nms(
+                self.detections,
+                iou_thresh=0.2
+            )
 
-                            update_pixels = overlay_crop & (conf > conf_region)
+            for det in self.detections:
 
-                            region[update_pixels] = self.mask_id
-                            conf_region[update_pixels] = conf
+                x1, y1, x2, y2 = det["bbox"]
 
-                            self.mask_id += 1
+                region = self.mask_overlay[y1:y2, x1:x2]
+                conf_region = self.conf_overlay[y1:y2, x1:x2]
 
-            self.annotated_image = self.image.copy()            
-            self.annotated_image[self.mask_overlay > 0] = segment_color ### modified
-            w, h = self.painter.set_image(numpy=True, numpy_img=self.annotated_image) 
+                mask = det["mask"]
+                conf = det["conf"]
+
+                update_pixels = mask & (conf > conf_region)
+
+                region[update_pixels] = self.mask_id
+                conf_region[update_pixels] = conf
+
+                self.mask_id += 1
+
+            self.annotated_image = self.image.copy()
+            self.annotated_image[self.mask_overlay > 0] = segment_color
+
+            w, h = self.painter.set_image(numpy=True,numpy_img=self.annotated_image)
 
             self.selected = True
+
 
     def conf_valuechanged(self):
         '''
