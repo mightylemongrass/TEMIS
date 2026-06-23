@@ -374,44 +374,49 @@ class MainApp(QMainWindow):
         if self.displayed == True:
             if self.selected:
                 fn_prefix = os.path.splitext(self.toolbox.listWidget.selectedItems()[0].text())[0]
-                if self.save_path == "" or not os.path.isdir(self.save_path):
-                    cv2.imwrite(fn_prefix + "_segment.png", self.annotated_image)
-                    #cv2.imwrite(fn_prefix + "_black.png", self.mask_overlay)
-
+                if not os.path.isdir(self.save_path):
+                    print("invalid save directory") 
                 else:
                     try:
-                        cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment.png"), self.annotated_image)
+                        cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment.png"), cv2.cvtColor(self.annotated_image, cv2.COLOR_RGB2BGR))
                         cv2.imwrite(os.path.join(self.save_path, fn_prefix + "_segment_only.png"), self.mask_overlay)
 
-                        unique_values = np.unique(self.mask_overlay)
-                        unique_values = unique_values[unique_values != 0]
+                        mask = np.uint8(self.mask_overlay > 0)
+
+                        contours, _ = cv2.findContours(
+                            mask,
+                            cv2.RETR_EXTERNAL,
+                            cv2.CHAIN_APPROX_SIMPLE
+                        )
 
                         data = []
 
-                        for val in unique_values:
-                            mask = np.uint8(self.mask_overlay == val)
+                        for cnt in contours:
+                            area = cv2.contourArea(cnt)
 
-                            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            if area <= 20:
+                                continue
 
-                            for cnt in contours:
-                                area = cv2.contourArea(cnt)
+                            M = cv2.moments(cnt)
 
-                                if area <= 20:
-                                    continue
+                            if M["m00"] != 0:
+                                cX = M["m10"] / M["m00"]
+                                cY = M["m01"] / M["m00"]
+                            else:
+                                cX, cY = 0, 0
 
-                                M = cv2.moments(cnt)
-                                if M["m00"] != 0:
-                                    cX = M["m10"] / M["m00"]
-                                    cY = M["m01"] / M["m00"]
-                                else:
-                                    cX, cY = 0, 0
-
-                                data.append({"pixel_value": val, "area": area, "center_x": cX, "center_y": cY})
+                            data.append({
+                                "area": area,
+                                "center_x": cX,
+                                "center_y": cY
+                            })
 
                         df = pd.DataFrame(data)
 
-                        df.to_csv(os.path.join(self.save_path, fn_prefix + "_segment_data.csv"), index=False)
-                        
+                        df.to_csv(
+                            os.path.join(self.save_path, fn_prefix + "_segment_data.csv"),
+                            index=False
+                        )                        
                     except:
                         print("invalid directory")
 
@@ -430,11 +435,9 @@ class MainApp(QMainWindow):
 
                     self.mask_overlay = np.zeros((h, w), dtype=np.int32)
                     self.conf_overlay = np.zeros((h, w), dtype=np.int32)
-                    self.mask_id = 1
                     for det in self.detections:
 
                         if det["conf"] < self.conf_threshold / 100:
-                            print(det["conf"])
                             continue
 
                         x1, y1, x2, y2 = det["bbox"]
@@ -447,10 +450,8 @@ class MainApp(QMainWindow):
 
                         update_pixels = mask & (conf > conf_region)
 
-                        region[update_pixels] = self.mask_id
+                        region[update_pixels] = 255
                         conf_region[update_pixels] = conf
-
-                        self.mask_id += 1
  
                     self.annotated_image = self.image.copy()
                     self.annotated_image[self.mask_overlay > 0] = segment_color
@@ -482,7 +483,6 @@ class MainApp(QMainWindow):
         if self.selected and self.displayed:
             self.can_change_conf = False
             self.draw_toggle = not self.draw_toggle
-            self.mask_id += 1
             font = self.draw_button.font()
             font.setBold(self.draw_toggle)
             self.draw_button.setFont(font)
@@ -505,7 +505,7 @@ class MainApp(QMainWindow):
 
     def draw_segments(self, y, x):
         if self.selected and self.displayed and self.show_boxes and self.draw_toggle:
-            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(self.mask_id, self.mask_id, self.mask_id), thickness=-1)
+            cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(255, 255, 255), thickness=-1)
             self.redraw_edit()
 
     def delete_segments_toggle_func(self):
@@ -532,11 +532,23 @@ class MainApp(QMainWindow):
                 self.painter.setCursor(Qt.ArrowCursor)
 
     def delete_segment(self, x, y):
-        if self.selected and self.displayed and self.show_boxes and self.delete_toggle: 
-            mask_id = self.mask_overlay[y, x]
-            if mask_id != 0:
-                self.mask_overlay[self.mask_overlay == mask_id] = 0
-            self.redraw_edit()
+        if not (self.selected and self.displayed and
+                self.show_boxes and self.delete_toggle):
+            return
+
+        if self.mask_overlay[y, x] == 0:
+            return
+
+        num_labels, labels = cv2.connectedComponents(
+            np.uint8(self.mask_overlay > 0)
+        )
+
+        clicked_label = labels[y, x]
+
+        if clicked_label > 0:
+            self.mask_overlay[labels == clicked_label] = 0
+
+        self.redraw_edit()
 
     def delete_partially_toggle_func(self):
         if self.selected and self.displayed:
@@ -572,6 +584,7 @@ class MainApp(QMainWindow):
         self.selected = False
         self.boxes = []
         self.selected_box = -1
+        self.can_change_conf = True
 
         try:
             image_path = self.file_path.text()
@@ -666,7 +679,6 @@ class MainApp(QMainWindow):
             stride = int(tile_size * (1 - overlap))
 
             ind = 1
-            self.mask_id = 1
 
             self.mask_overlay = np.zeros((h, w), dtype=np.int32)
             self.conf_overlay = np.zeros((h, w), dtype=np.float32)
@@ -732,10 +744,9 @@ class MainApp(QMainWindow):
 
                 update_pixels = mask & (conf > conf_region)
 
-                region[update_pixels] = self.mask_id
+                region[update_pixels] = 255
                 conf_region[update_pixels] = conf
 
-                self.mask_id += 1
 
             self.annotated_image = self.image.copy()
             self.annotated_image[self.mask_overlay > 0] = segment_color
