@@ -227,7 +227,7 @@ class MainApp(QMainWindow):
         self.installEventFilter(self.painter)
 
         self.toolbox = MainTool(self)
-        self.toolbox.setMaximumWidth(250)
+        self.toolbox.setMaximumWidth(700)
 
         self.widget1 = QWidget(self)
         self.top_layout = QVBoxLayout(self)
@@ -303,6 +303,26 @@ class MainApp(QMainWindow):
         
         
         mainwidget = QWidget(self)
+        splitter = QSplitter(Qt.Horizontal)
+
+        splitter.addWidget(self.toolbox)
+        splitter.addWidget(self.widget2)
+
+        splitter.setSizes([250, 1000])
+
+        splitter.setChildrenCollapsible(False)
+
+        self.toolbox.setMinimumWidth(150)
+        self.widget2.setMinimumWidth(400)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(splitter)
+
+        mainwidget.setLayout(layout)
+        self.setCentralWidget(mainwidget)
+
+
         layout = QHBoxLayout()
         layout.addWidget(self.toolbox)
         layout.addWidget(self.widget2)
