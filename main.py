@@ -21,6 +21,7 @@ from ultralytics import YOLO
 import os
 import glob
 import pandas as pd
+import traceback
 
 
 segment_color = (255, 50, 0)
@@ -288,13 +289,9 @@ class MainApp(QMainWindow):
 
         self.size_slider_widget = QWidget(self)
         self.size_sliders_layout = QHBoxLayout(self)
-        self.size_slider_draw = QLabel('Scale: 1 Pixel = 20 nm')
-        self.size_slider = QSlider(Qt.Horizontal)
-        self.size_slider.setMinimum(1)
-        self.size_slider.setMaximum(100)
-        self.size_slider.setValue(20)
-        self.size_slider.setTickPosition(QSlider.NoTicks)
-        self.size_slider.valueChanged.connect(self.size_slider_changed)
+        self.size_slider_draw = QLabel('Scale: 1 Pixel = ')
+        self.size_slider = QLineEdit(self)
+        self.size_slider.setText("0.05")
         self.size_sliders_layout.addWidget(self.size_slider_draw)
         self.size_sliders_layout.addWidget(self.size_slider)
         self.size_slider_widget.setLayout(self.size_sliders_layout)
@@ -454,9 +451,10 @@ class MainApp(QMainWindow):
                                 cX, cY = 0, 0
 
                             data.append({
-                                "area": area,
-                                "center_x": cX,
-                                "center_y": cY
+                                "area (pixels)": area,
+                                "area (nm)": round(area * (float(self.size_slider.text()) ** 2), 3),
+                                "center_x (pixels)": round(cX, 3),
+                                "center_y (pixels)": round(cY, 3)
                             })
 
                         df = pd.DataFrame(data)
@@ -465,8 +463,9 @@ class MainApp(QMainWindow):
                             os.path.join(self.save_path, fn_prefix + "_segment_data.csv"),
                             index=False
                         )                        
-                    except:
-                        print("invalid directory")
+                    except Exception as e:
+                        traceback.print_exc()
+                        print(e)
 
     def redraw_conf(self, r=False):
         '''
@@ -624,9 +623,6 @@ class MainApp(QMainWindow):
     def draw_slider_changed(self):
         self.slidelabel_draw.setText('Brush Size: ' + str(self.draw_slider.value()))
         self.brush_rad = self.draw_slider.value()
-
-    def size_slider_changed(self):
-        self.size_slider_draw.setText('Scale: 1 Pixel = ' + str(self.size_slider.value()) + " nm")
 
     def selector(self):
         '''
