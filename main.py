@@ -196,11 +196,17 @@ class MainApp(QMainWindow):
         super(MainApp, self).__init__()
         self.setFocusPolicy(Qt.StrongFocus)
 
+        
         self.title = 'Transmission Electron Microscopy Image Segmentor (TEMIS)'
         self.left = 20
         self.top = 20
-        self.width = 900
-        self.height = 570
+
+        if os.name == "nt":
+            self.width = 1800
+            self.height = 1000
+        else:
+            self.width = 1200
+            self.height = 600
         self.working_image_path = ''
         self.selected = False
         self.displayed = False
@@ -227,7 +233,7 @@ class MainApp(QMainWindow):
         self.installEventFilter(self.painter)
 
         self.toolbox = MainTool(self)
-        self.toolbox.setMaximumWidth(700)
+        self.toolbox.setMaximumWidth(900)
 
         self.widget1 = QWidget(self)
         self.top_layout = QVBoxLayout(self)
@@ -280,6 +286,19 @@ class MainApp(QMainWindow):
         self.save_file_path_line_edit.setObjectName("file path")
         self.save_file_path_line_edit.returnPressed.connect(self.on_save_return)
 
+        self.size_slider_widget = QWidget(self)
+        self.size_sliders_layout = QHBoxLayout(self)
+        self.size_slider_draw = QLabel('Scale: 1 Pixel = 20 nm')
+        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider.setMinimum(1)
+        self.size_slider.setMaximum(100)
+        self.size_slider.setValue(20)
+        self.size_slider.setTickPosition(QSlider.NoTicks)
+        self.size_slider.valueChanged.connect(self.size_slider_changed)
+        self.size_sliders_layout.addWidget(self.size_slider_draw)
+        self.size_sliders_layout.addWidget(self.size_slider)
+        self.size_slider_widget.setLayout(self.size_sliders_layout)
+
         self.bottom_widget = QWidget(self)
         self.bottom_layout = QHBoxLayout()
         self.bottom_layout.addWidget(self.save_file_path_line_edit)
@@ -298,6 +317,7 @@ class MainApp(QMainWindow):
         self.main_dock = QVBoxLayout()
         self.main_dock.addWidget(self.widget1)
         self.main_dock.addWidget(self.images)
+        self.main_dock.addWidget(self.size_slider_widget)
         self.main_dock.addWidget(self.bottom_widget)
         self.widget2.setLayout(self.main_dock)
         
@@ -352,12 +372,20 @@ class MainApp(QMainWindow):
         self.displayed = False
         self.selected = False
 
-        csv_list = (
-            glob.glob(os.path.join(self.working_image_path, "*.jpg")) +
-            glob.glob(os.path.join(self.working_image_path, "*.png")) +
-            glob.glob(os.path.join(self.working_image_path, "*.JPG")) +
-            glob.glob(os.path.join(self.working_image_path, "*.PNG"))
-        )
+
+        if os.name == "nt":
+            csv_list = (
+                glob.glob(os.path.join(self.working_image_path, "*.jpg")) +
+                glob.glob(os.path.join(self.working_image_path, "*.png"))
+            )
+        else:
+            csv_list = (
+                glob.glob(os.path.join(self.working_image_path, "*.jpg")) +
+                glob.glob(os.path.join(self.working_image_path, "*.png")) +
+                glob.glob(os.path.join(self.working_image_path, "*.JPG")) +
+                glob.glob(os.path.join(self.working_image_path, "*.PNG"))
+            )
+            
         self.toolbox.listWidget.clear()
         for csv in csv_list:
             csv_fn = os.path.basename(csv)
@@ -597,6 +625,9 @@ class MainApp(QMainWindow):
         self.slidelabel_draw.setText('Brush Size: ' + str(self.draw_slider.value()))
         self.brush_rad = self.draw_slider.value()
 
+    def size_slider_changed(self):
+        self.size_slider_draw.setText('Scale: 1 Pixel = ' + str(self.size_slider.value()) + " nm")
+
     def selector(self):
         '''
         displays the selected image file
@@ -728,6 +759,7 @@ class MainApp(QMainWindow):
                         boxes_conf = r.boxes.conf.cpu().numpy()
                         masks = r.masks.data.cpu().numpy()
 
+
                         for conf, mask in zip(boxes_conf, masks):
 
                             if conf < self.conf_threshold/100:
@@ -735,6 +767,16 @@ class MainApp(QMainWindow):
 
                             mask = cv2.resize(mask, (tile_size, tile_size))
                             mask = (mask > 0.5).astype(np.uint8)
+
+                            margin = 2
+
+                            ys, xs = np.where(mask)
+
+                            if len(xs) == 0:
+                                continue
+
+                            if (xs.min() <= margin or ys.min() <= margin or xs.max() >= tile_size - margin - 1 or ys.max() >= tile_size - margin - 1):
+                                continue
 
                             y1, y2 = y, min(y + tile_size, h)
                             x1, x2 = x, min(x + tile_size, w)
