@@ -747,7 +747,7 @@ class MainApp(QMainWindow):
                         source=tile,
                         imgsz=tile_size,
                         show=False,
-                        conf=0.35,
+                        conf=0.05,
                         verbose=False, 
                         retina_masks=True
                     )
