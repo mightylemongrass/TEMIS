@@ -304,10 +304,13 @@ class MainApp(QMainWindow):
         self.bottom_widget.setLayout(self.bottom_layout)
         self.bottom_widget.setMaximumHeight(self.frameGeometry().height()//3)
 
+        self.reference_image.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.painter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
         self.images = QWidget(self)
         self.images_layout = QHBoxLayout()
-        self.images_layout.addWidget(self.reference_image)
-        self.images_layout.addWidget(self.painter)
+        self.images_layout.addWidget(self.reference_image, 1)
+        self.images_layout.addWidget(self.painter, 1)
         self.images.setLayout(self.images_layout)
 
         self.widget2 = QWidget(self)
