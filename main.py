@@ -439,6 +439,7 @@ class MainApp(QMainWindow):
 
                         data = []
 
+
                         for cnt in contours:
                             area = cv2.contourArea(cnt)
 
@@ -453,9 +454,28 @@ class MainApp(QMainWindow):
                             else:
                                 cX, cY = 0, 0
 
+                            area_pixels = area
+
+                            nm_per_pixel = float(self.size_slider.text())
+
+                            area_nm2 = area_pixels * (nm_per_pixel ** 2)
+
+                            diameter_pixels = 2 * np.sqrt(area_pixels / np.pi)
+                            diameter_nm = 2 * np.sqrt(area_nm2 / np.pi)
+
+                            volume_pixels3 = (4 / 3) * np.pi * (diameter_pixels / 2) ** 3
+                            volume_nm3 = (4 / 3) * np.pi * (diameter_nm / 2) ** 3
+
                             data.append({
-                                "area (pixels)": area,
-                                "area (nm)": round(area * (float(self.size_slider.text()) ** 2), 3),
+                                "area (pixels^2)": round(area_pixels, 3),
+                                "area (nm^2)": round(area_nm2, 3),
+
+                                "diameter (pixels)": round(diameter_pixels, 3),
+                                "diameter (nm)": round(diameter_nm, 3),
+
+                                "volume (pixels^3)": round(volume_pixels3, 3),
+                                "volume (nm^3)": round(volume_nm3, 3),
+
                                 "center_x (pixels)": round(cX, 3),
                                 "center_y (pixels)": round(cY, 3)
                             })
