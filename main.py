@@ -82,6 +82,11 @@ class MainImage(QWidget):
         painter.end()
 
     def widget_to_image_coords(self, x_widget, y_widget):
+        '''
+        converts widget coords back into regular coords
+
+        '''
+
         if self.image_pixmap is None:
             return None, None
 
@@ -408,10 +413,16 @@ class MainApp(QMainWindow):
             self.toolbox.listWidget.addItem(listWidgetItem)
 
     def on_save_button(self):
+        '''
+        Opens popup menu where user can select directory when save_path button is pressed
+        '''
         self.save_path = QFileDialog.getExistingDirectory(self, 'Open File', os.getcwd())
         self.save_file_path_line_edit.setText(str(self.save_path))
     
     def on_save_return(self):
+        '''
+        Sets save_path variable to text in save_path text bar when enter is pressed
+        '''
         self.save_path = self.save_file_path_line_edit.text() 
         self.save_file_path_line_edit.setText(str(self.save_path))
 
@@ -531,6 +542,9 @@ class MainApp(QMainWindow):
 
 
     def redraw_edit(self):
+        '''
+        function edits image when user draws on it
+        '''
         if self.displayed == True:
             if self.selected == True:
                 if self.show_boxes == True:
@@ -550,6 +564,9 @@ class MainApp(QMainWindow):
         self.redraw_edit()
 
     def draw_segments_toggle_func(self):
+        '''
+        toggles whether drawing mode is on
+        '''
         if self.selected and self.displayed:
             self.can_change_conf = False
             self.draw_toggle = not self.draw_toggle
@@ -574,11 +591,17 @@ class MainApp(QMainWindow):
                 
 
     def draw_segments(self, y, x):
+        '''
+        draws segment on image during draw mode
+        '''
         if self.selected and self.displayed and self.show_boxes and self.draw_toggle:
             cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(255, 255, 255), thickness=-1)
             self.redraw_edit()
 
     def delete_segments_toggle_func(self):
+        '''
+        toggles delete mode for deleting segments
+        '''
         if self.selected and self.displayed:
             self.can_change_conf = False
             self.delete_toggle = not self.delete_toggle 
@@ -602,6 +625,9 @@ class MainApp(QMainWindow):
                 self.painter.setCursor(Qt.ArrowCursor)
 
     def delete_segment(self, x, y):
+        '''
+        deletes selected segment using blob detection
+        '''
         if not (self.selected and self.displayed and
                 self.show_boxes and self.delete_toggle):
             return
@@ -621,6 +647,9 @@ class MainApp(QMainWindow):
         self.redraw_edit()
 
     def delete_partially_toggle_func(self):
+        '''
+        toggle for deleting partially mode using eraser
+        '''
         if self.selected and self.displayed:
             self.can_change_conf = False
             self.delete_partially_toggle = not self.delete_partially_toggle 
@@ -639,11 +668,17 @@ class MainApp(QMainWindow):
                 self.draw_button.setFont(font)
 
     def delete_partially(self, x, y):
+        '''
+        essentially an eraser for segments, deletes partially when selected
+        '''
         if self.selected and self.displayed and self.show_boxes and self.delete_partially_toggle:
             cv2.circle(self.mask_overlay, center=(y, x), radius=self.brush_rad, color=(0, 0, 0), thickness=-1)
             self.redraw_edit()
 
     def draw_slider_changed(self):
+        '''
+        updates brush radius when slider is moved
+        '''
         self.slidelabel_draw.setText('Brush Size: ' + str(self.draw_slider.value()))
         self.brush_rad = self.draw_slider.value()
 
@@ -669,6 +704,9 @@ class MainApp(QMainWindow):
             pass
 
     def mask_iou(self, mask1, mask2):
+        '''
+        determines iou of two masks
+        '''
         intersection = np.logical_and(mask1, mask2).sum()
         union = np.logical_or(mask1, mask2).sum()
 
@@ -679,6 +717,9 @@ class MainApp(QMainWindow):
 
 
     def detection_iou(self, det1, det2):
+        '''
+        determines iou of two detections
+        '''
 
         ax1, ay1, ax2, ay2 = det1["bbox"]
         bx1, by1, bx2, by2 = det2["bbox"]
@@ -708,6 +749,9 @@ class MainApp(QMainWindow):
 
 
     def mask_nms(self, detections, iou_thresh=0.5):
+        '''
+        uses non max suppression to prevent duplicate segments
+        '''
 
         detections = sorted(
             detections,
@@ -848,6 +892,9 @@ class MainApp(QMainWindow):
             self.redraw_conf()
         
     def on_run_button(self):
+        '''
+        runs program
+        '''
         if len(self.working_image_path) == 0:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
@@ -856,10 +903,6 @@ class MainApp(QMainWindow):
             msg.setStandardButtons(QMessageBox.Ok)
             msg.exec_()
             return
-
-    def on_view_mode(self, mode):
-        print("hello")
-
 
 
 app = QApplication(sys.argv)
