@@ -8,6 +8,8 @@ TEMIS provides a PyQT-based user interface to interactively select and segment r
 I developed this program as a research intern and an external student collaborator at Lawrence Livermore National Laboratory for a materials science research project. 
 
 
+
+
 ## Prerequisites for Running Program
 
 Python 3  
