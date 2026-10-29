@@ -294,7 +294,7 @@ class MainApp(QMainWindow):
 
         self.size_slider_widget = QWidget(self)
         self.size_sliders_layout = QHBoxLayout(self)
-        self.size_slider_draw = QLabel('Scale: 1 Pixel = ')
+        self.size_slider_draw = QLabel('Scale: 1 Pixel = Nanometers: ')
         self.size_slider = QLineEdit(self)
         self.size_slider.setText("0.05")
         self.size_sliders_layout.addWidget(self.size_slider_draw)

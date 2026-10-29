@@ -12,6 +12,7 @@ I developed this program as a research intern and an external student collaborat
 
 ## Prerequisites for Running Program
 
+Versions Listed in requirements.txt (pip install requirements.txt)  
 Python 3  
 Pytorch  
 OpenCV 4 or higher  
