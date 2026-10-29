@@ -23,7 +23,9 @@ To install the program, run this command in this directory after cloning: conda 
 
 
 ## Authors
-Ian Kim  ik9davis@gmail.com  
+Ian Kim, ik9davis@gmail.com  
+
+Swanee Shin, shin5@llnl.gov (Research Supervisor at Lawrence Livermore National Laboratory)  
 
 ## Version
 
