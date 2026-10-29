@@ -3,11 +3,11 @@
 TEMIS is an AI-driven image segmentation tool to segment helium (He) bubble regions in Transmission Electron Microscopy (TEM) images, 
 used to understand the correlation between He ion implantation condition and the growth of He bubbles at different temperatures. 
 To analyze the bubbles in TEM images, a labor-intensive manual annotation method using ImageJ was used previously, which took more than one hour to annotate bubble regions per image. 
-TEMIS uses YOLOv8 model trained on He bubble regions labeled TEM images, automatically detecting and segmenting bubble regions on regular laptops without specific hardware/GPU requirements.  
+TEMIS uses YOLOv8 model trained on He bubble regions labeled TEM images, automatically detecting and segmenting bubble regions on regular laptops without specific hardware/GPU requirements. 
 TEMIS provides a PyQT-based user interface to interactively select and segment regions, with simple built-in tools for manual editing. 
 I developed this program as a research intern and an external student collaborator at Lawrence Livermore National Laboratory for a materials science research project. 
 
-
+![TEMIS GUI](/temis.png)
 
 
 ## Prerequisites for Running Program
